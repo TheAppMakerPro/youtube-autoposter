@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   try {
     await exchangeCode(code);
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   } catch (err) {
     console.error("OAuth callback error:", err);
     return NextResponse.json(
