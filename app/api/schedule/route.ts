@@ -131,10 +131,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, post });
   } catch (error) {
     console.error("Failed to schedule post:", error);
-    return NextResponse.json(
-      { error: "Failed to schedule video. Please try again." },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : "Failed to schedule";
+    return NextResponse.json({ error: msg }, { status: 500 });
   } finally {
     for (const f of tempFiles) {
       cleanupTempFile(f);

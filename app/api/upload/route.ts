@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json({ error: "Upload failed. Please try again." }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "Upload failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
   } finally {
     for (const f of tempFiles) {
       cleanupTempFile(f);
