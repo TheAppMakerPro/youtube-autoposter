@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadVideo } from "@/lib/youtube";
 import { downloadFromUrl, cleanupTempFile } from "@/lib/download";
+import { isAuthenticated } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { randomUUID } from "crypto";
 
-export const maxDuration = 300; // 5 min timeout for large uploads
+export const maxDuration = 300;
+
+const VALID_PRIVACY = ["public", "unlisted", "private"] as const;
+
+function safeTempPath(prefix: string): string {
+  return path.join(os.tmpdir(), `yt-autoposter-${prefix}-${randomUUID()}`);
+}
 
 export async function POST(request: NextRequest) {
+  // Auth check
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const tempFiles: string[] = [];
 
   try {
@@ -18,7 +30,7 @@ export async function POST(request: NextRequest) {
     const description = formData.get("description") as string;
     const tags = formData.get("tags") as string | null;
     const categoryId = formData.get("categoryId") as string | null;
-    const privacyStatus = (formData.get("privacyStatus") as string) || "public";
+    const privacyStatusRaw = (formData.get("privacyStatus") as string) || "public";
     const publishAt = formData.get("publishAt") as string | null;
     const videoFile = formData.get("videoFile") as File | null;
     const videoUrl = formData.get("videoUrl") as string | null;
@@ -38,10 +50,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve video path
+    // Validate privacy status
+    if (!VALID_PRIVACY.includes(privacyStatusRaw as typeof VALID_PRIVACY[number])) {
+      return NextResponse.json(
+        { error: "Privacy must be public, unlisted, or private" },
+        { status: 400 }
+      );
+    }
+    const privacyStatus = privacyStatusRaw as typeof VALID_PRIVACY[number];
+
+    // Validate publishAt is in the future if provided
+    if (publishAt) {
+      const publishDate = new Date(publishAt);
+      const fifteenMinFromNow = new Date(Date.now() + 15 * 60 * 1000);
+      if (isNaN(publishDate.getTime()) || publishDate < fifteenMinFromNow) {
+        return NextResponse.json(
+          { error: "Scheduled publish time must be at least 15 minutes in the future" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Resolve video path (sanitized filenames — use UUID only)
     let videoPath: string;
     if (videoFile) {
-      videoPath = path.join(os.tmpdir(), `yt-autoposter-${randomUUID()}-${videoFile.name}`);
+      videoPath = safeTempPath("vid");
       const buffer = Buffer.from(await videoFile.arrayBuffer());
       fs.writeFileSync(videoPath, buffer);
       tempFiles.push(videoPath);
@@ -50,10 +83,10 @@ export async function POST(request: NextRequest) {
       tempFiles.push(videoPath);
     }
 
-    // Resolve thumbnail path
+    // Resolve thumbnail path (sanitized)
     let thumbnailPath: string | undefined;
     if (thumbnailFile) {
-      thumbnailPath = path.join(os.tmpdir(), `yt-autoposter-thumb-${randomUUID()}-${thumbnailFile.name}`);
+      thumbnailPath = safeTempPath("thumb");
       const buffer = Buffer.from(await thumbnailFile.arrayBuffer());
       fs.writeFileSync(thumbnailPath, buffer);
       tempFiles.push(thumbnailPath);
@@ -64,7 +97,7 @@ export async function POST(request: NextRequest) {
       description,
       tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
       categoryId: categoryId || "22",
-      privacyStatus: privacyStatus as "public" | "unlisted" | "private",
+      privacyStatus,
       publishAt: publishAt || undefined,
       videoPath,
       thumbnailPath,
@@ -73,10 +106,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Upload error:", error);
-    const message = error instanceof Error ? error.message : "Upload failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Upload failed. Please try again." }, { status: 500 });
   } finally {
-    // Clean up temp files
     for (const f of tempFiles) {
       cleanupTempFile(f);
     }

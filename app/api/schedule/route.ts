@@ -8,23 +8,39 @@ import {
 } from "@/lib/store";
 import { uploadVideo } from "@/lib/youtube";
 import { downloadFromUrl, cleanupTempFile } from "@/lib/download";
+import { isAuthenticated } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 import os from "os";
 
 export const maxDuration = 300;
 
+function safeTempPath(prefix: string): string {
+  return path.join(os.tmpdir(), `yt-autoposter-${prefix}-${randomUUID()}`);
+}
+
 export async function GET() {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   try {
     const posts = await getAllScheduledPosts();
     return NextResponse.json({ posts });
   } catch (error) {
     console.error("Failed to fetch schedule:", error);
-    return NextResponse.json({ posts: [] });
+    return NextResponse.json(
+      { error: "Failed to load schedule" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const tempFiles: string[] = [];
 
   try {
@@ -53,10 +69,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve video to a temp file
+    // Validate scheduledAt is at least 15 minutes in the future (YouTube requirement)
+    const scheduleDate = new Date(scheduledAt);
+    const fifteenMinFromNow = new Date(Date.now() + 15 * 60 * 1000);
+    if (isNaN(scheduleDate.getTime()) || scheduleDate < fifteenMinFromNow) {
+      return NextResponse.json(
+        { error: "Scheduled time must be at least 15 minutes in the future" },
+        { status: 400 }
+      );
+    }
+
+    // Resolve video to a temp file (sanitized filenames)
     let videoPath: string;
     if (videoFile) {
-      videoPath = path.join(os.tmpdir(), `yt-autoposter-${randomUUID()}-${videoFile.name}`);
+      videoPath = safeTempPath("vid");
       const buffer = Buffer.from(await videoFile.arrayBuffer());
       fs.writeFileSync(videoPath, buffer);
       tempFiles.push(videoPath);
@@ -65,24 +91,23 @@ export async function POST(request: NextRequest) {
       tempFiles.push(videoPath);
     }
 
-    // Resolve thumbnail
+    // Resolve thumbnail (sanitized)
     let thumbnailPath: string | undefined;
     if (thumbnailFile) {
-      thumbnailPath = path.join(os.tmpdir(), `yt-autoposter-thumb-${randomUUID()}-${thumbnailFile.name}`);
+      thumbnailPath = safeTempPath("thumb");
       const buffer = Buffer.from(await thumbnailFile.arrayBuffer());
       fs.writeFileSync(thumbnailPath, buffer);
       tempFiles.push(thumbnailPath);
     }
 
     // Upload to YouTube immediately as PRIVATE with publishAt
-    // YouTube will auto-publish at the scheduled time
     const result = await uploadVideo({
       title,
       description,
       tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
       categoryId,
       privacyStatus: "private",
-      publishAt: new Date(scheduledAt).toISOString(),
+      publishAt: scheduleDate.toISOString(),
       videoPath,
       thumbnailPath,
     });
@@ -94,7 +119,7 @@ export async function POST(request: NextRequest) {
       description,
       tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
       categoryId,
-      scheduledAt: new Date(scheduledAt).toISOString(),
+      scheduledAt: scheduleDate.toISOString(),
       status: "scheduled",
       youtubeVideoId: result.videoId ?? undefined,
       youtubeUrl: result.videoUrl,
@@ -106,8 +131,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, post });
   } catch (error) {
     console.error("Failed to schedule post:", error);
-    const message = error instanceof Error ? error.message : "Failed to schedule";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to schedule video. Please try again." },
+      { status: 500 }
+    );
   } finally {
     for (const f of tempFiles) {
       cleanupTempFile(f);
@@ -116,10 +143,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   try {
     const { id } = await request.json();
-    if (!id) {
-      return NextResponse.json({ error: "ID required" }, { status: 400 });
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ error: "Valid ID required" }, { status: 400 });
     }
     await deleteScheduledPost(id);
     return NextResponse.json({ success: true });

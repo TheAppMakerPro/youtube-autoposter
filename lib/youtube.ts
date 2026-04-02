@@ -47,9 +47,8 @@ export async function uploadVideo(options: UploadOptions) {
       },
     },
     {
-      onUploadProgress: (evt: { bytesRead: number }) => {
-        const progress = (evt.bytesRead / fileSize) * 100;
-        console.log(`Upload progress: ${Math.round(progress)}%`);
+      onUploadProgress: () => {
+        // progress tracked client-side
       },
     }
   );

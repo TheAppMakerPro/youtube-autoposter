@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
+import { randomBytes } from "crypto";
 
 interface SessionData {
   tokens?: {
@@ -10,6 +11,7 @@ interface SessionData {
     token_type?: string | null;
     expiry_date?: number | null;
   };
+  oauthState?: string;
 }
 
 const SCOPES = [
@@ -18,14 +20,22 @@ const SCOPES = [
   "https://www.googleapis.com/auth/youtube.force-ssl",
 ];
 
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error("SESSION_SECRET env var must be set and at least 32 characters");
+  }
+  return secret;
+}
+
 const SESSION_OPTIONS = {
-  password: process.env.SESSION_SECRET || "complex_password_at_least_32_characters_long_replace_me",
+  password: getSessionSecret(),
   cookieName: "yt-autoposter-session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
     httpOnly: true,
     sameSite: "lax" as const,
-    maxAge: 60 * 60 * 24 * 30, // 30 days
+    maxAge: 60 * 60 * 24 * 30,
   },
 };
 
@@ -37,18 +47,36 @@ function getOAuth2Client() {
   );
 }
 
-export function getAuthUrl(): string {
+export async function getAuthUrl(): Promise<string> {
   const oauth2Client = getOAuth2Client();
+  const state = randomBytes(32).toString("hex");
+
+  // Store state in session for CSRF verification
+  const session = await getSession();
+  session.oauthState = state;
+  await session.save();
+
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent",
+    state,
   });
 }
 
 async function getSession() {
   const cookieStore = await cookies();
   return getIronSession<SessionData>(cookieStore, SESSION_OPTIONS);
+}
+
+export async function verifyOAuthState(state: string | null): Promise<boolean> {
+  if (!state) return false;
+  const session = await getSession();
+  const valid = session.oauthState === state;
+  // Clear state after verification (single-use)
+  session.oauthState = undefined;
+  await session.save();
+  return valid;
 }
 
 export async function exchangeCode(code: string) {
@@ -69,7 +97,7 @@ export async function getAuthenticatedClient() {
   const oauth2Client = getOAuth2Client();
   oauth2Client.setCredentials(session.tokens);
 
-  // Auto-refresh if expired
+  // Auto-refresh if expired — save updated tokens
   oauth2Client.on("tokens", async (newTokens) => {
     const merged = { ...session.tokens, ...newTokens };
     session.tokens = merged;
