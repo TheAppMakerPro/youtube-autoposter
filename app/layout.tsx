@@ -14,7 +14,20 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Syncro-Link YouTube Auto-Poster",
-  description: "Upload videos to the Syncro-Link YouTube channel",
+  description: "Upload and schedule videos to the Syncro-Link YouTube channel",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
+  openGraph: {
+    title: "Syncro-Link YouTube Auto-Poster",
+    description: "Upload and schedule videos to the Syncro-Link YouTube channel",
+    images: [{ url: "/icon-512.png", width: 512, height: 512 }],
+  },
 };
 
 export default function RootLayout({
