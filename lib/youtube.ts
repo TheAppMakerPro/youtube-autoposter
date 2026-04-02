@@ -11,7 +11,6 @@ export interface UploadOptions {
   privacyStatus: "public" | "unlisted" | "private";
   publishAt?: string;
   videoPath: string;
-  thumbnailPath?: string;
 }
 
 export async function uploadVideo(options: UploadOptions) {
@@ -54,17 +53,6 @@ export async function uploadVideo(options: UploadOptions) {
   );
 
   const videoId = res.data.id;
-
-  // Upload thumbnail if provided
-  if (options.thumbnailPath && videoId) {
-    const thumbStream = fs.createReadStream(options.thumbnailPath);
-    await youtube.thumbnails.set({
-      videoId,
-      media: {
-        body: thumbStream as unknown as Readable,
-      },
-    });
-  }
 
   return {
     videoId,

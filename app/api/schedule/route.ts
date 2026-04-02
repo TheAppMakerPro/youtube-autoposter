@@ -53,7 +53,6 @@ export async function POST(request: NextRequest) {
     const scheduledAt = formData.get("scheduledAt") as string;
     const videoFile = formData.get("videoFile") as File | null;
     const videoUrl = formData.get("videoUrl") as string | null;
-    const thumbnailFile = formData.get("thumbnailFile") as File | null;
 
     if (!title || !description || !scheduledAt) {
       return NextResponse.json(
@@ -91,15 +90,6 @@ export async function POST(request: NextRequest) {
       tempFiles.push(videoPath);
     }
 
-    // Resolve thumbnail (sanitized)
-    let thumbnailPath: string | undefined;
-    if (thumbnailFile) {
-      thumbnailPath = safeTempPath("thumb");
-      const buffer = Buffer.from(await thumbnailFile.arrayBuffer());
-      fs.writeFileSync(thumbnailPath, buffer);
-      tempFiles.push(thumbnailPath);
-    }
-
     // Upload to YouTube immediately as PRIVATE with publishAt
     const result = await uploadVideo({
       title,
@@ -109,7 +99,6 @@ export async function POST(request: NextRequest) {
       privacyStatus: "private",
       publishAt: scheduleDate.toISOString(),
       videoPath,
-      thumbnailPath,
     });
 
     const id = randomUUID();

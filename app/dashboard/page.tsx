@@ -65,9 +65,7 @@ function VideoForm({
   const [tags, setTags] = useState("");
   const [categoryId, setCategoryId] = useState("22");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const thumbInputRef = useRef<HTMLInputElement>(null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -83,9 +81,6 @@ function VideoForm({
       formData.append("videoFile", videoFile);
     } else if (videoSource === "url" && videoUrl) {
       formData.append("videoUrl", videoUrl);
-    }
-    if (thumbnailFile) {
-      formData.append("thumbnailFile", thumbnailFile);
     }
     onSubmit(formData);
   }
@@ -227,28 +222,6 @@ function VideoForm({
           />
         </div>
       )}
-
-      {/* Thumbnail */}
-      <div>
-        <label className="block text-sm font-medium mb-2">Thumbnail</label>
-        <div
-          onClick={() => thumbInputRef.current?.click()}
-          className="bg-surface border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-accent/50 transition-colors"
-        >
-          {thumbnailFile ? (
-            <p className="text-accent text-sm">{thumbnailFile.name}</p>
-          ) : (
-            <p className="text-foreground/40 text-sm">Click to select a thumbnail image</p>
-          )}
-          <input
-            ref={thumbInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => setThumbnailFile(e.target.files?.[0] || null)}
-          />
-        </div>
-      </div>
 
       {/* Progress Bar */}
       {submitting && (

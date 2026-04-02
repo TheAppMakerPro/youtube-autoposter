@@ -34,7 +34,6 @@ export async function POST(request: NextRequest) {
     const publishAt = formData.get("publishAt") as string | null;
     const videoFile = formData.get("videoFile") as File | null;
     const videoUrl = formData.get("videoUrl") as string | null;
-    const thumbnailFile = formData.get("thumbnailFile") as File | null;
 
     if (!title || !description) {
       return NextResponse.json(
@@ -83,15 +82,6 @@ export async function POST(request: NextRequest) {
       tempFiles.push(videoPath);
     }
 
-    // Resolve thumbnail path (sanitized)
-    let thumbnailPath: string | undefined;
-    if (thumbnailFile) {
-      thumbnailPath = safeTempPath("thumb");
-      const buffer = Buffer.from(await thumbnailFile.arrayBuffer());
-      fs.writeFileSync(thumbnailPath, buffer);
-      tempFiles.push(thumbnailPath);
-    }
-
     const result = await uploadVideo({
       title,
       description,
@@ -100,7 +90,6 @@ export async function POST(request: NextRequest) {
       privacyStatus,
       publishAt: publishAt || undefined,
       videoPath,
-      thumbnailPath,
     });
 
     return NextResponse.json(result);
